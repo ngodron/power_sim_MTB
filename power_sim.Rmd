@@ -30,7 +30,7 @@ We establish a simple, additive genotype-phenotype relationship in a bacterial p
 
 ## Parametrisation of the genotype-phenotype relationship
 
-Let's assume we have $n = 30$ independent causal genes (as there are elements towards polygenic inheritance) among $N = 4000$ (order of magnitude of $\ Mycobacterium\ tuberculosis $ genes) bi-allelic genes.
+Let's assume we have $n = 15$ independent causal genes (as there are elements towards polygenic inheritance) among $N = 4000$ (order of magnitude of $\ Mycobacterium\ tuberculosis $ genes) bi-allelic genes.
 
 ```{r Parameters}
 n = 15             # Number of independent (i.e. in linkage equilibrium) causal loci
@@ -67,14 +67,12 @@ where $d_i$ (0 or 1) denotes the $i$-th genotype (presence/absence of gene) $\ep
 Narrow-sense heritability is given by \[ h^2 = \frac{\sum \beta_i f_i (1 - f_i)}{V(Y)} \]
 
 For this phenotype, we assume a fair amount of heritability $h^2 = 30\%$, to account for host factors such as immune competency (or lack thereof) making up part of the effect.
-Another assumption is the confounding contribution of all resistances, which here will be set at $5$%, so $h^2\_res = 25%$.
-This heritability would gain from managing resistance-induced bias, such as designing a resistance covariate.
-Furthermore, the heterogeneity of the 'extra-pulmonary' phenotype can be seen as a further loss in heritability (again set at 5%).
+Another assumption is the confounding contribution of all resistances, which here will be set at $10$%, so $h^2\_res = 20%$.
+This heritability would gain from managing resistance-induced bias, such as designing a resistance covariate. Principal Component Analysis results (data not shown) suggest building such covariate is doable.
 
 ```{r}
 h2 = 0.30
-h2_res = 0.25
-h2_extrap = 0.20
+h2_res = 0.20
 ```
 
 The amount of noise, $\sigma^2$, can be determined based on the assumed value for $h^2$:
@@ -89,13 +87,9 @@ sigma  = sqrt(s2)              # sigma
 s2_res = (1- h2_res)/h2_res * vg
 vt_res = vg + s2_res
 sigma_res  = sqrt(s2_res)
-
-s2_extrap = (1- h2_extrap)/h2_extrap * vg
-vt_extrap = vg + s2_extrap                   # Total phenotypic variation
-sigma_extrap  = sqrt(s2_extrap)              # sigma
 ```
 
-Of course, other genetic architectures could be tested:
+Other genetic architectures could be tested:
 
 * 10%, 15%, 40%, 60% heritability
 * .02, .1, .3, .4  MAF
@@ -107,8 +101,7 @@ A majority of the strains in $K\_res$ but not in $K$ would be publicly available
 
 ```{r}
 K = 407
-K_res = 750
-K_extrap = 1000
+K_res = 1000
 ```
 
 Detection is based on a type~I error rate of $\alpha = 0.05\ (5\%)$ or False Discovery Rate $FDR = 50\%$.
@@ -203,38 +196,6 @@ sim_res <- foreach(r = 1:R, .combine = rbind) %dopar%
       h2=var(yg)/var(y))
   }
 
-# Same but with resistance dataset
-sim_extrap <- foreach(r = 1:R, .combine = rbind) %dopar%
-  {
-    x = t(matrix(rbinom(n * K_extrap, size=1, prob=f), nrow=n))
-    yg = colSums(beta * t(x))
-    noise = rnorm(K_extrap, mean=0, sd=sigma_extrap)
-    y = yg + noise
-
-    for (j in 1:n) {
-        a = y[x[, j] == 0]
-        b = y[x[, j] == 1]
-        if (length(a) >= 2 && length(b) >= 2) {
-            test = t.test(a, b)
-            p[j] = test$p.value
-        } else {
-            p[j] = 1
-        }
-    
-        fdr = p.adjust(c(p, runif(N - n)), method='fdr')
-        
-        fdr_true_detected = sum(which(fdr < fdr_thr) <= n)
-        
-        fdr_detected = sum(fdr < fdr_thr)
-    }
-    
-    c(minp=min(p),
-      maxp=max(p),
-      bonf_true=sum(p < alpha/N),
-      fdr_detect=fdr_detected,
-      fdr_true=fdr_true_detected,
-      h2=var(yg)/var(y))
-  }
 ```
 
 
@@ -247,14 +208,9 @@ sim <-
 sim_res <-
   sim_res |>
   as_tibble() |>
-  mutate(dataset = "C2: S&R TB-NM, n=750, h²=0.25")
+  mutate(dataset = "C2: S&R TB-NM, n=1000, h²=0.20")
 
-sim_extrap <-
-  sim_extrap |>
-  as_tibble() |>
-  mutate(dataset = "C3: S&R TB-EP, n=1,000, h²=0.20")
-
-sim_all <- rbind(sim, sim_res, sim_extrap)
+sim_all <- rbind(sim, sim_res)
 ```
 
 ## Analysis
@@ -272,7 +228,7 @@ sim_all |>
   guides(size = "legend", alpha = "none") +
   scale_x_log10(limits = c(1e-30, NA),
                 breaks = c(1e-2, 1e-10, 1e-20, 1e-30)) +
-  scale_fill_manual(values = c("grey90", "cyan", "tomato")) +
+  scale_fill_manual(values = c("bisque", "cyan")) +
   xlab("Minimal p-value") +
   ggtitle("Distribution of the uncorrected minimal p-value")
 ```
@@ -291,7 +247,7 @@ sim_all |>
                  position = "identity") +
   guides(size = "legend", alpha = "none") +
   scale_x_continuous(breaks = seq(0, max(sim_all$bonf_true), 2)) +
-  scale_fill_manual(values = c("grey90", "cyan", "tomato")) +
+  scale_fill_manual(values = c("bisque", "cyan")) +
   labs(seq(0, max(sim_all$bonf_true), 2)) +
   xlab("True associations") +
   ggtitle('Number of true associations detected using a Bonferroni correction')  
@@ -328,7 +284,7 @@ sim_all |>
                  colour = "grey40",
                   position="identity") +
   guides(size = "legend", alpha = "none") +
-  scale_fill_manual(values = c("grey90", "cyan", "tomato")) +
+  scale_fill_manual(values = c("bisque", "cyan")) +
   xlab("Total number of hits") +
   ggtitle("Number of (true or false) hits using False Discovery Rate 50%")
 ```
@@ -345,7 +301,7 @@ sim_all |>
                  colour = "grey40",
                  position = "identity") +
   guides(size = "legend", alpha = "none") +
-  scale_fill_manual(values = c("grey90", "cyan", "tomato")) +
+  scale_fill_manual(values = c("bisque", "cyan")) +
   xlab("FDR true associations") +
   ggtitle("Number of true hits using False Discovery Rate 50%")
 ```
